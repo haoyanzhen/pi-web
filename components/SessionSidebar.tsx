@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import type { SessionInfo } from "@/lib/types";
-import { FileExplorer } from "./FileExplorer";
+import { getRelativeFilePath } from "@/lib/file-paths";
+import { FileExplorer, type FileSelection } from "./FileExplorer";
 
 interface Props {
   selectedSessionId: string | null;
@@ -32,6 +33,12 @@ function formatRelativeTime(dateStr: string): string {
   if (hours < 24) return `${hours}h ago`;
   if (days < 7) return `${days}d ago`;
   return date.toLocaleDateString();
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /** Return the 5 most recently active cwds across all sessions */
@@ -212,6 +219,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [explorerKey, setExplorerKey] = useState(0);
   const [sessionRefreshDone, setSessionRefreshDone] = useState(false);
   const [explorerRefreshDone, setExplorerRefreshDone] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<FileSelection | null>(null);
   const sessionRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const explorerRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -258,6 +266,23 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   useEffect(() => {
     onCwdChange?.(selectedCwd);
   }, [selectedCwd, onCwdChange]);
+
+  const activeExplorerCwd = selectedCwdProp ?? selectedCwd;
+
+  useEffect(() => {
+    setSelectedFile(null);
+  }, [activeExplorerCwd]);
+
+  const handleDownloadSelectedFile = useCallback(() => {
+    if (!activeExplorerCwd || !selectedFile) return;
+    const relativePath = getRelativeFilePath(selectedFile.fullPath, activeExplorerCwd);
+    if (relativePath === selectedFile.fullPath) return;
+    const params = new URLSearchParams({
+      cwd: activeExplorerCwd,
+      path: relativePath,
+    });
+    window.location.href = `/api/files/download?${params.toString()}`;
+  }, [activeExplorerCwd, selectedFile]);
 
   const selectCwd = useCallback(async (cwd: string): Promise<string | null> => {
     let selected = cwd;
@@ -696,7 +721,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       </div>
 
       {/* File Explorer section */}
-      {(selectedCwdProp || selectedCwd) && (
+      {activeExplorerCwd && (
         <div
           style={{
             borderTop: "1px solid var(--border)",
@@ -771,14 +796,102 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             </button>
           </div>
           {explorerOpen && (
-            <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
-              <FileExplorer
-                cwd={selectedCwdProp ?? selectedCwd!}
-                onOpenFile={onOpenFile ?? (() => {})}
-                refreshKey={explorerKey}
-                onAtMention={onAtMention}
-              />
-            </div>
+            <>
+              <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+                <FileExplorer
+                  cwd={activeExplorerCwd}
+                  onOpenFile={onOpenFile ?? (() => {})}
+                  refreshKey={explorerKey}
+                  onAtMention={onAtMention}
+                  onSelectFile={setSelectedFile}
+                />
+              </div>
+              <div
+                style={{
+                  flexShrink: 0,
+                  borderTop: "1px solid var(--border)",
+                  padding: "8px 10px",
+                  background: "var(--bg-panel)",
+                }}
+              >
+                {selectedFile ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                      <span
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          color: "var(--text)",
+                          fontSize: 12,
+                          fontWeight: 600,
+                        }}
+                        title={selectedFile.fullPath}
+                      >
+                        {selectedFile.name}
+                      </span>
+                      <button
+                        onClick={handleDownloadSelectedFile}
+                        title="Download selected file"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: 28,
+                          height: 28,
+                          padding: 0,
+                          background: "var(--bg-hover)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 6,
+                          color: "var(--text-muted)",
+                          cursor: "pointer",
+                          flexShrink: 0,
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "var(--bg-selected)";
+                          e.currentTarget.style.color = "var(--accent)";
+                          e.currentTarget.style.borderColor = "rgba(37,99,235,0.35)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "var(--bg-hover)";
+                          e.currentTarget.style.color = "var(--text-muted)";
+                          e.currentTarget.style.borderColor = "var(--border)";
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="7 10 12 15 17 10" />
+                          <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div
+                      style={{
+                        color: "var(--text-dim)",
+                        fontSize: 11,
+                        fontFamily: "var(--font-mono)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={selectedFile.fullPath}
+                    >
+                      {getRelativeFilePath(selectedFile.fullPath, activeExplorerCwd)}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "var(--text-dim)", fontSize: 11 }}>
+                      <span>{formatFileSize(selectedFile.size)}</span>
+                      <span>{formatRelativeTime(selectedFile.modified)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ color: "var(--text-dim)", fontSize: 11 }}>
+                    Select a file for details
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
       )}

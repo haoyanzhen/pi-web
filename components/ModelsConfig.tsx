@@ -1,69 +1,44 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-// Color icons (have their own fill colors — no background needed)
-import AnthropicIcon from "@lobehub/icons/es/Anthropic/components/Mono";
-import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
-import GoogleColorIcon from "@lobehub/icons/es/Google/components/Color";
-import DeepSeekColorIcon from "@lobehub/icons/es/DeepSeek/components/Color";
-import GroqIcon from "@lobehub/icons/es/Groq/components/Mono";
-import MistralColorIcon from "@lobehub/icons/es/Mistral/components/Color";
-import MoonshotIcon from "@lobehub/icons/es/Moonshot/components/Mono";
-import MinimaxColorIcon from "@lobehub/icons/es/Minimax/components/Color";
-import FireworksColorIcon from "@lobehub/icons/es/Fireworks/components/Color";
-import HuggingFaceColorIcon from "@lobehub/icons/es/HuggingFace/components/Color";
-import CerebrasColorIcon from "@lobehub/icons/es/Cerebras/components/Color";
-import OpenRouterIcon from "@lobehub/icons/es/OpenRouter/components/Mono";
-import XAIIcon from "@lobehub/icons/es/XAI/components/Mono";
-import CloudflareColorIcon from "@lobehub/icons/es/Cloudflare/components/Color";
-import VercelIcon from "@lobehub/icons/es/Vercel/components/Mono";
-import GithubCopilotIcon from "@lobehub/icons/es/GithubCopilot/components/Mono";
-import AwsColorIcon from "@lobehub/icons/es/Aws/components/Color";
-import AzureColorIcon from "@lobehub/icons/es/Azure/components/Color";
-import KimiColorIcon from "@lobehub/icons/es/Kimi/components/Color";
-import QwenColorIcon from "@lobehub/icons/es/Qwen/components/Color";
-import ZhipuColorIcon from "@lobehub/icons/es/Zhipu/components/Color";
-import CohereColorIcon from "@lobehub/icons/es/Cohere/components/Color";
-import PerplexityColorIcon from "@lobehub/icons/es/Perplexity/components/Color";
-import TogetherColorIcon from "@lobehub/icons/es/Together/components/Color";
-import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
+type ProviderIconSpec = {
+  label: string;
+  background: string;
+  foreground?: string;
+};
 
-type IconComponent = React.ComponentType<{ size?: number | string; style?: React.CSSProperties }>;
-
-// hasColor=true → Color icon (self-colored SVG, no wrapper)
-// hasColor=false → Mono icon (rendered with currentColor, inherits theme text color)
-const PROVIDER_ICONS: Record<string, { Icon: IconComponent; hasColor: boolean }> = {
-  "anthropic":              { Icon: AnthropicIcon,        hasColor: false },
-  "openai":                 { Icon: OpenAIIcon,           hasColor: false },
-  "openai-codex":           { Icon: OpenAIIcon,           hasColor: false },
-  "google":                 { Icon: GoogleColorIcon,      hasColor: true },
-  "google-vertex":          { Icon: GoogleColorIcon,      hasColor: true },
-  "deepseek":               { Icon: DeepSeekColorIcon,    hasColor: true },
-  "groq":                   { Icon: GroqIcon,             hasColor: false },
-  "mistral":                { Icon: MistralColorIcon,     hasColor: true },
-  "moonshotai":             { Icon: MoonshotIcon,         hasColor: false },
-  "moonshotai-cn":          { Icon: MoonshotIcon,         hasColor: false },
-  "moonshot":               { Icon: MoonshotIcon,         hasColor: false },
-  "minimax":                { Icon: MinimaxColorIcon,     hasColor: true },
-  "minimax-cn":             { Icon: MinimaxColorIcon,     hasColor: true },
-  "fireworks":              { Icon: FireworksColorIcon,   hasColor: true },
-  "huggingface":            { Icon: HuggingFaceColorIcon, hasColor: true },
-  "cerebras":               { Icon: CerebrasColorIcon,    hasColor: true },
-  "openrouter":             { Icon: OpenRouterIcon,       hasColor: false },
-  "xai":                    { Icon: XAIIcon,              hasColor: false },
-  "cloudflare-ai-gateway":  { Icon: CloudflareColorIcon,  hasColor: true },
-  "cloudflare-workers-ai":  { Icon: CloudflareColorIcon,  hasColor: true },
-  "vercel-ai-gateway":      { Icon: VercelIcon,           hasColor: false },
-  "github-copilot":         { Icon: GithubCopilotIcon,    hasColor: false },
-  "amazon-bedrock":         { Icon: AwsColorIcon,         hasColor: true },
-  "azure-openai-responses": { Icon: AzureColorIcon,       hasColor: true },
-  "kimi-coding":            { Icon: KimiColorIcon,        hasColor: true },
-  "qwen":                   { Icon: QwenColorIcon,        hasColor: true },
-  "zai":                    { Icon: ZhipuColorIcon,       hasColor: true },
-  "cohere":                 { Icon: CohereColorIcon,      hasColor: true },
-  "perplexity":             { Icon: PerplexityColorIcon,  hasColor: true },
-  "together":               { Icon: TogetherColorIcon,    hasColor: true },
-  "grok":                   { Icon: GrokIcon,             hasColor: false },
+const PROVIDER_ICONS: Record<string, ProviderIconSpec> = {
+  "anthropic":              { label: "A",  background: "#171717" },
+  "openai":                 { label: "O",  background: "#0f766e" },
+  "openai-codex":           { label: "O",  background: "#0f766e" },
+  "google":                 { label: "G",  background: "#4285f4" },
+  "google-vertex":          { label: "G",  background: "#4285f4" },
+  "deepseek":               { label: "D",  background: "#4f46e5" },
+  "groq":                   { label: "GQ", background: "#f97316" },
+  "mistral":                { label: "M",  background: "#f59e0b", foreground: "#111827" },
+  "moonshotai":             { label: "K",  background: "#111827" },
+  "moonshotai-cn":          { label: "K",  background: "#111827" },
+  "moonshot":               { label: "K",  background: "#111827" },
+  "minimax":                { label: "M",  background: "#7c3aed" },
+  "minimax-cn":             { label: "M",  background: "#7c3aed" },
+  "fireworks":              { label: "F",  background: "#dc2626" },
+  "huggingface":            { label: "HF", background: "#facc15", foreground: "#111827" },
+  "cerebras":               { label: "C",  background: "#2563eb" },
+  "openrouter":             { label: "OR", background: "#334155" },
+  "xai":                    { label: "X",  background: "#18181b" },
+  "cloudflare-ai-gateway":  { label: "CF", background: "#f6821f", foreground: "#111827" },
+  "cloudflare-workers-ai":  { label: "CF", background: "#f6821f", foreground: "#111827" },
+  "vercel-ai-gateway":      { label: "V",  background: "#000000" },
+  "github-copilot":         { label: "GH", background: "#24292f" },
+  "amazon-bedrock":         { label: "AWS", background: "#ff9900", foreground: "#111827" },
+  "azure-openai-responses": { label: "AZ", background: "#0078d4" },
+  "kimi-coding":            { label: "K",  background: "#06b6d4", foreground: "#111827" },
+  "qwen":                   { label: "Q",  background: "#6d28d9" },
+  "zai":                    { label: "Z",  background: "#10b981", foreground: "#111827" },
+  "cohere":                 { label: "CO", background: "#39594d" },
+  "perplexity":             { label: "P",  background: "#14b8a6", foreground: "#111827" },
+  "together":               { label: "T",  background: "#6366f1" },
+  "grok":                   { label: "G",  background: "#18181b" },
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -1082,10 +1057,32 @@ function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRef
 function ProviderIcon({ id, size }: { id: string; size: number }) {
   const pi = PROVIDER_ICONS[id];
   if (!pi) return null;
-  // Color icons: self-colored SVG, no wrapper needed
-  if (pi.hasColor) return <pi.Icon size={size} />;
-  // Mono icons: use currentColor so they adapt to light/dark theme
-  return <pi.Icon size={size} style={{ color: "var(--text-muted)" }} />;
+  const fontSize = Math.max(8, Math.floor(size * (pi.label.length > 2 ? 0.32 : 0.42)));
+
+  return (
+    <span
+      aria-hidden="true"
+      title={id}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: Math.max(4, Math.floor(size * 0.22)),
+        background: pi.background,
+        color: pi.foreground ?? "#fff",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        fontSize,
+        fontWeight: 700,
+        lineHeight: 1,
+        fontFamily: "var(--font-mono)",
+        boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.16)",
+      }}
+    >
+      {pi.label}
+    </span>
+  );
 }
 
 // ── Add provider picker ───────────────────────────────────────────────────────

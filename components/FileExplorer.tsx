@@ -11,11 +11,19 @@ interface FileEntry {
   modified: string;
 }
 
+export interface FileSelection {
+  fullPath: string;
+  name: string;
+  size: number;
+  modified: string;
+}
+
 interface FileNode {
   name: string;
   fullPath: string;
   isDir: boolean;
   size: number;
+  modified: string;
   children?: FileNode[];
   loaded?: boolean;
 }
@@ -25,6 +33,7 @@ interface Props {
   onOpenFile: (filePath: string, fileName: string) => void;
   refreshKey?: number;
   onAtMention?: (relativePath: string) => void;
+  onSelectFile?: (file: FileSelection | null) => void;
 }
 
 async function fetchEntries(dirPath: string): Promise<FileNode[]> {
@@ -40,6 +49,7 @@ async function fetchEntries(dirPath: string): Promise<FileNode[]> {
     fullPath: joinFilePath(dirPath, e.name),
     isDir: e.isDir,
     size: e.size,
+    modified: e.modified,
     children: e.isDir ? [] : undefined,
     loaded: !e.isDir,
   }));
@@ -51,6 +61,7 @@ function TreeNode({
   cwd,
   onOpenFile,
   onAtMention,
+  onSelectFile,
   expandedPaths,
   onToggleExpanded,
   refreshKey,
@@ -60,6 +71,7 @@ function TreeNode({
   cwd: string;
   onOpenFile: (filePath: string, fileName: string) => void;
   onAtMention?: (relativePath: string) => void;
+  onSelectFile?: (file: FileSelection | null) => void;
   expandedPaths: Set<string>;
   onToggleExpanded: (fullPath: string, open: boolean) => void;
   refreshKey?: number;
@@ -100,13 +112,20 @@ function TreeNode({
 
   const handleClick = useCallback(() => {
     if (node.isDir) {
+      onSelectFile?.(null);
       const next = !open;
       onToggleExpanded(node.fullPath, next);
       if (next && !loaded) loadChildren();
     } else {
+      onSelectFile?.({
+        fullPath: node.fullPath,
+        name: node.name,
+        size: node.size,
+        modified: node.modified,
+      });
       onOpenFile(node.fullPath, node.name);
     }
-  }, [node.isDir, node.fullPath, node.name, loaded, open, loadChildren, onOpenFile, onToggleExpanded]);
+  }, [node.isDir, node.fullPath, node.name, node.size, node.modified, loaded, open, loadChildren, onOpenFile, onSelectFile, onToggleExpanded]);
 
   return (
     <div>
@@ -198,7 +217,7 @@ function TreeNode({
       {node.isDir && open && (
         <div>
           {children.map((child) => (
-            <TreeNode key={child.fullPath} node={child} depth={depth + 1} cwd={cwd} onOpenFile={onOpenFile} onAtMention={onAtMention} expandedPaths={expandedPaths} onToggleExpanded={onToggleExpanded} refreshKey={refreshKey} />
+            <TreeNode key={child.fullPath} node={child} depth={depth + 1} cwd={cwd} onOpenFile={onOpenFile} onAtMention={onAtMention} onSelectFile={onSelectFile} expandedPaths={expandedPaths} onToggleExpanded={onToggleExpanded} refreshKey={refreshKey} />
           ))}
           {children.length === 0 && loaded && (
             <div style={{ paddingLeft: 8 + (depth + 1) * 14, fontSize: 11, color: "var(--text-dim)", height: 22, display: "flex", alignItems: "center" }}>
@@ -211,7 +230,7 @@ function TreeNode({
   );
 }
 
-export function FileExplorer({ cwd, onOpenFile, refreshKey, onAtMention }: Props) {
+export function FileExplorer({ cwd, onOpenFile, refreshKey, onAtMention, onSelectFile }: Props) {
   const [roots, setRoots] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -267,6 +286,7 @@ export function FileExplorer({ cwd, onOpenFile, refreshKey, onAtMention }: Props
           cwd={cwd}
           onOpenFile={onOpenFile}
           onAtMention={onAtMention}
+          onSelectFile={onSelectFile}
           expandedPaths={expandedPaths}
           onToggleExpanded={handleToggleExpanded}
           refreshKey={refreshKey}
