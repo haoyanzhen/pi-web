@@ -30,6 +30,7 @@ export function AppShell() {
   const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
   // When user clicks +, we only store the cwd — no fake session id
   const [newSessionCwd, setNewSessionCwd] = useState<string | null>(null);
+  const [newSessionTopicId, setNewSessionTopicId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [sessionKey, setSessionKey] = useState(0);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
@@ -224,16 +225,18 @@ export function AppShell() {
       if (prev && prev !== cwd) return null;
       return prev;
     });
+    setNewSessionTopicId((prev) => newSessionCwd && newSessionCwd !== cwd ? null : prev);
     setSessionKey((k) => k + 1);
     setBranchTree([]);
     setBranchActiveLeafId(null);
     setSystemPrompt(null);
     setActiveTopPanel(null);
     router.replace("/", { scroll: false });
-  }, [router]);
+  }, [newSessionCwd, router]);
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false) => {
     setNewSessionCwd(null);
+    setNewSessionTopicId(null);
     setSelectedSession(session);
     setSessionKey((k) => k + 1);
     setSystemPrompt(null);
@@ -251,9 +254,10 @@ export function AppShell() {
     }
   }, [router]);
 
-  const handleNewSession = useCallback((_sessionId: string, cwd: string) => {
+  const handleNewSession = useCallback((_sessionId: string, cwd: string, topicId?: string | null) => {
     setSelectedSession(null);
     setNewSessionCwd(cwd);
+    setNewSessionTopicId(topicId ?? null);
     setSessionKey((k) => k + 1);
     setBranchTree([]);
     setBranchActiveLeafId(null);
@@ -264,11 +268,21 @@ export function AppShell() {
 
   // Called by ChatWindow when a new session gets its real id from pi
   const handleSessionCreated = useCallback((session: SessionInfo) => {
+    const topicId = newSessionTopicId;
     setNewSessionCwd(null);
+    setNewSessionTopicId(null);
     setSelectedSession(session);
-    setRefreshKey((k) => k + 1);
+    if (topicId) {
+      void fetch(`/api/sessions/${encodeURIComponent(session.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topicId }),
+      }).finally(() => setRefreshKey((k) => k + 1));
+    } else {
+      setRefreshKey((k) => k + 1);
+    }
     router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
-  }, [router]);
+  }, [newSessionTopicId, router]);
 
   const handleAgentEnd = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -296,6 +310,7 @@ export function AppShell() {
       const cwd = selectedSession.cwd;
       setSelectedSession(null);
       setNewSessionCwd(cwd ?? null);
+      setNewSessionTopicId(null);
       setSessionKey((k) => k + 1);
       setBranchTree([]);
       setBranchActiveLeafId(null);

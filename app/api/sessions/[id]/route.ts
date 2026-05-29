@@ -10,6 +10,7 @@ import {
 } from "@/lib/session-reader";
 import { getRpcSession } from "@/lib/rpc-manager";
 import { assertTrustedRequest } from "@/app/api/_security/api-auth";
+import { clearSessionTopic, setSessionTopic } from "@/lib/topics";
 
 export async function GET(
   req: Request,
@@ -80,7 +81,7 @@ export async function GET(
   }
 }
 
-// PATCH /api/sessions/[id]  body: { name: string }
+// PATCH /api/sessions/[id]  body: { name?: string; topicId?: string | null }
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -90,16 +91,29 @@ export async function PATCH(
 
   const { id } = await params;
   try {
-    const { name } = await req.json() as { name?: string };
-    if (typeof name !== "string") {
-      return NextResponse.json({ error: "name is required" }, { status: 400 });
+    const body = await req.json() as { name?: string; topicId?: string | null };
+    const hasName = Object.prototype.hasOwnProperty.call(body, "name");
+    const hasTopic = Object.prototype.hasOwnProperty.call(body, "topicId");
+    if (!hasName && !hasTopic) {
+      return NextResponse.json({ error: "name or topicId is required" }, { status: 400 });
     }
     const filePath = await resolveSessionPath(id);
     if (!filePath) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
-    const sm = SessionManager.open(filePath);
-    sm.appendSessionInfo(name.trim());
+    if (hasName) {
+      if (typeof body.name !== "string") {
+        return NextResponse.json({ error: "name must be a string" }, { status: 400 });
+      }
+      const sm = SessionManager.open(filePath);
+      sm.appendSessionInfo(body.name.trim());
+    }
+    if (hasTopic) {
+      if (body.topicId !== null && typeof body.topicId !== "string") {
+        return NextResponse.json({ error: "topicId must be a string or null" }, { status: 400 });
+      }
+      setSessionTopic(id, body.topicId ?? null);
+    }
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
@@ -153,6 +167,7 @@ export async function DELETE(
     getRpcSession(id)?.destroy();
     unlinkSync(filePath);
     invalidateSessionPathCache(id);
+    clearSessionTopic(id);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });

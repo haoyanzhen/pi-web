@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import type { SessionInfo } from "@/lib/types";
+import type { SessionInfo, TopicInfo } from "@/lib/types";
 import { getRelativeFilePath } from "@/lib/file-paths";
 import { FileExplorer, type FileSelection } from "./FileExplorer";
 
 interface Props {
   selectedSessionId: string | null;
   onSelectSession: (session: SessionInfo, isRestore?: boolean) => void;
-  onNewSession?: (sessionId: string, cwd: string) => void;
+  onNewSession?: (sessionId: string, cwd: string, topicId?: string | null) => void;
   initialSessionId?: string | null;
   onInitialRestoreDone?: () => void;
   refreshKey?: number;
@@ -70,6 +70,12 @@ function shortenCwd(cwd: string, homeDir?: string): string {
 interface SessionTreeNode {
   session: SessionInfo;
   children: SessionTreeNode[];
+}
+
+interface TopicGroup {
+  topic: TopicInfo | null;
+  tree: SessionTreeNode[];
+  sessionCount: number;
 }
 
 function buildSessionTree(sessions: SessionInfo[]): SessionTreeNode[] {
@@ -206,6 +212,9 @@ function PiAgentTitle() {
 
 export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onAtMention, requestWorkspaceTrust }: Props) {
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
+  const [topics, setTopics] = useState<TopicInfo[]>([]);
+  const [sessionTopics, setSessionTopics] = useState<Record<string, string>>({});
+  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedCwd, setSelectedCwd] = useState<string | null>(null);
@@ -243,6 +252,27 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     }
   }, []);
 
+  const loadTopics = useCallback(async (cwd: string | null) => {
+    if (!cwd) {
+      setTopics([]);
+      setSessionTopics({});
+      setSelectedTopicId(null);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/topics?cwd=${encodeURIComponent(cwd)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as { topics: TopicInfo[]; sessionTopics: Record<string, string> };
+      setTopics(data.topics);
+      setSessionTopics(data.sessionTopics);
+      setSelectedTopicId((cur) => cur && data.topics.some((topic) => topic.id === cur) ? cur : null);
+    } catch {
+      setTopics([]);
+      setSessionTopics({});
+      setSelectedTopicId(null);
+    }
+  }, []);
+
   const initialLoadDone = useRef(false);
   useEffect(() => {
     const isFirst = !initialLoadDone.current;
@@ -268,6 +298,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   }, [selectedCwd, onCwdChange]);
 
   const activeExplorerCwd = selectedCwdProp ?? selectedCwd;
+
+  useEffect(() => {
+    void loadTopics(selectedCwd);
+  }, [selectedCwd, refreshKey, loadTopics]);
 
   useEffect(() => {
     setSelectedFile(null);
@@ -372,16 +406,74 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     const tempId = typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
-    onNewSession?.(tempId, trustedCwd);
-  }, [selectedCwd, onNewSession, selectCwd]);
+    onNewSession?.(tempId, trustedCwd, selectedTopicId);
+  }, [selectedCwd, onNewSession, selectCwd, selectedTopicId]);
+
+  const handleCreateTopic = useCallback(async () => {
+    if (!selectedCwd) return;
+    const name = window.prompt("Topic name");
+    if (!name?.trim()) return;
+    const trustedCwd = await selectCwd(selectedCwd);
+    if (!trustedCwd) return;
+    const res = await fetch("/api/topics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: trustedCwd, name }),
+    });
+    if (!res.ok) return;
+    const data = await res.json() as { topic: TopicInfo };
+    setSelectedTopicId(data.topic.id);
+    await loadTopics(trustedCwd);
+  }, [selectedCwd, selectCwd, loadTopics]);
+
+  const handleRenameTopic = useCallback(async (topic: TopicInfo) => {
+    const name = window.prompt("Rename topic", topic.name);
+    if (!name?.trim() || name.trim() === topic.name) return;
+    await fetch(`/api/topics/${encodeURIComponent(topic.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    await loadTopics(selectedCwd);
+  }, [selectedCwd, loadTopics]);
+
+  const handleDeleteTopic = useCallback(async (topic: TopicInfo) => {
+    if (!window.confirm(`Delete topic "${topic.name}"? Sessions will move to No Topic.`)) return;
+    await fetch(`/api/topics/${encodeURIComponent(topic.id)}`, { method: "DELETE" });
+    setSelectedTopicId((cur) => cur === topic.id ? null : cur);
+    await loadTopics(selectedCwd);
+  }, [selectedCwd, loadTopics]);
+
+  const handleSessionMoved = useCallback(async () => {
+    await loadTopics(selectedCwd);
+    await loadSessions(false);
+  }, [selectedCwd, loadTopics, loadSessions]);
 
   const recentCwds = getRecentCwds(allSessions);
   const filteredSessions = selectedCwd
     ? allSessions.filter((s) => s.cwd === selectedCwd)
     : allSessions;
 
-  // Build parent-child tree within the filtered set
-  const sessionTree = buildSessionTree(filteredSessions);
+  const topicById = new Map(topics.map((topic) => [topic.id, topic]));
+  const groupedSessions = new Map<string | null, SessionInfo[]>();
+  for (const session of filteredSessions) {
+    const topicId = sessionTopics[session.id];
+    groupedSessions.set(topicId && topicById.has(topicId) ? topicId : null, [
+      ...(groupedSessions.get(topicId && topicById.has(topicId) ? topicId : null) ?? []),
+      session,
+    ]);
+  }
+  const topicGroups: TopicGroup[] = [
+    ...topics.map((topic) => {
+      const sessions = groupedSessions.get(topic.id) ?? [];
+      return { topic, tree: buildSessionTree(sessions), sessionCount: sessions.length };
+    }),
+    {
+      topic: null,
+      tree: buildSessionTree(groupedSessions.get(null) ?? []),
+      sessionCount: groupedSessions.get(null)?.length ?? 0,
+    },
+  ].filter((group) => group.topic || group.sessionCount > 0 || topics.length > 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -415,7 +507,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 flexShrink: 0,
                 transition: "background 0.12s, color 0.12s, border-color 0.12s",
               }}
-              title={selectedCwd ? `New session in ${selectedCwd}` : "Select a project first"}
+              title={selectedCwd ? `New session${selectedTopicId ? ` in ${topics.find((topic) => topic.id === selectedTopicId)?.name ?? "topic"}` : ""}` : "Select a project first"}
               onMouseEnter={(e) => {
                 if (!selectedCwd) return;
                 e.currentTarget.style.background = "var(--bg-selected)";
@@ -685,6 +777,55 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             </div>
           )}
         </div>
+
+        {selectedCwd && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10 }}>
+            <button
+              onClick={() => setSelectedTopicId(null)}
+              title="New sessions go to No Topic"
+              style={{
+                flex: 1,
+                minWidth: 0,
+                height: 28,
+                padding: "0 9px",
+                background: selectedTopicId === null ? "var(--bg-selected)" : "var(--bg-hover)",
+                border: `1px solid ${selectedTopicId === null ? "rgba(37,99,235,0.35)" : "var(--border)"}`,
+                borderRadius: 7,
+                color: selectedTopicId === null ? "var(--accent)" : "var(--text-muted)",
+                cursor: "pointer",
+                fontSize: 11,
+                textAlign: "left",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              No Topic
+            </button>
+            <button
+              onClick={handleCreateTopic}
+              title="Create topic"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 28,
+                height: 28,
+                padding: 0,
+                background: "var(--bg-hover)",
+                border: "1px solid var(--border)",
+                borderRadius: 7,
+                color: "var(--text-muted)",
+                cursor: "pointer",
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round">
+                <line x1="6" y1="1" x2="6" y2="11" />
+                <line x1="1" y1="6" x2="11" y2="6" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Session list */}
@@ -699,23 +840,30 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             {error}
           </div>
         )}
-        {!loading && !error && filteredSessions.length === 0 && (
+        {!loading && !error && filteredSessions.length === 0 && topics.length === 0 && (
           <div style={{ padding: "16px 14px", color: "var(--text-muted)", fontSize: 12 }}>
             No sessions found
           </div>
         )}
-        {sessionTree.map((node) => (
-          <SessionTreeItem
-            key={node.session.id}
-            node={node}
+        {topicGroups.map((group) => (
+          <TopicSection
+            key={group.topic?.id ?? "__none__"}
+            group={group}
+            selectedTopicId={selectedTopicId}
             selectedSessionId={selectedSessionId}
+            topics={topics}
+            sessionTopics={sessionTopics}
+            onSelectTopic={setSelectedTopicId}
+            onRenameTopic={handleRenameTopic}
+            onDeleteTopic={handleDeleteTopic}
             onSelectSession={onSelectSession}
+            onSessionMoved={handleSessionMoved}
             onRenamed={loadSessions}
             onSessionDeleted={(id) => {
               onSessionDeleted?.(id);
               loadSessions();
+              loadTopics(selectedCwd);
             }}
-            depth={0}
           />
         ))}
       </div>
@@ -899,17 +1047,173 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   );
 }
 
+function TopicSection({
+  group,
+  selectedTopicId,
+  selectedSessionId,
+  topics,
+  sessionTopics,
+  onSelectTopic,
+  onRenameTopic,
+  onDeleteTopic,
+  onSelectSession,
+  onSessionMoved,
+  onRenamed,
+  onSessionDeleted,
+}: {
+  group: TopicGroup;
+  selectedTopicId: string | null;
+  selectedSessionId: string | null;
+  topics: TopicInfo[];
+  sessionTopics: Record<string, string>;
+  onSelectTopic: (topicId: string | null) => void;
+  onRenameTopic: (topic: TopicInfo) => void;
+  onDeleteTopic: (topic: TopicInfo) => void;
+  onSelectSession: (s: SessionInfo) => void;
+  onSessionMoved?: () => void;
+  onRenamed?: () => void;
+  onSessionDeleted?: (id: string) => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const topicId = group.topic?.id ?? null;
+  const selected = selectedTopicId === topicId;
+  const title = group.topic?.name ?? "No Topic";
+
+  return (
+    <div>
+      <div
+        onClick={() => onSelectTopic(topicId)}
+        style={{
+          height: 34,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "0 8px 0 10px",
+          background: selected ? "color-mix(in srgb, var(--accent) 9%, transparent)" : "transparent",
+          borderTop: "1px solid var(--border)",
+          borderLeft: selected ? "2px solid var(--accent)" : "2px solid transparent",
+          cursor: "pointer",
+          color: selected ? "var(--text)" : "var(--text-muted)",
+        }}
+      >
+        <button
+          onClick={(e) => { e.stopPropagation(); setCollapsed((v) => !v); }}
+          title={collapsed ? "Expand topic" : "Collapse topic"}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 18,
+            height: 18,
+            padding: 0,
+            background: "none",
+            border: "none",
+            color: "inherit",
+            cursor: "pointer",
+            transform: collapsed ? "rotate(-90deg)" : "none",
+            transition: "transform 0.15s",
+            flexShrink: 0,
+          }}
+        >
+          <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="2 3.5 5 6.5 8 3.5" />
+          </svg>
+        </button>
+        <span
+          title={title}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+        >
+          {title}
+        </span>
+        <span style={{ color: "var(--text-dim)", fontSize: 11, flexShrink: 0 }}>{group.sessionCount}</span>
+        {group.topic && (
+          <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); onRenameTopic(group.topic!); }}
+              title="Rename topic"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 22, height: 22, padding: 0, background: "none", border: "none",
+                borderRadius: 5, color: "var(--text-dim)", cursor: "pointer",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--accent)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text-dim)"; }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+              </svg>
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDeleteTopic(group.topic!); }}
+              title="Delete topic"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 22, height: 22, padding: 0, background: "none", border: "none",
+                borderRadius: 5, color: "var(--text-dim)", cursor: "pointer",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; e.currentTarget.style.color = "#ef4444"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text-dim)"; }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                <path d="M10 11v6M14 11v6" />
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
+      {!collapsed && group.tree.length === 0 && (
+        <div style={{ padding: "10px 14px 12px 36px", color: "var(--text-dim)", fontSize: 11 }}>
+          Empty
+        </div>
+      )}
+      {!collapsed && group.tree.map((node) => (
+        <SessionTreeItem
+          key={node.session.id}
+          node={node}
+          selectedSessionId={selectedSessionId}
+          topics={topics}
+          sessionTopics={sessionTopics}
+          onSelectSession={onSelectSession}
+          onSessionMoved={onSessionMoved}
+          onRenamed={onRenamed}
+          onSessionDeleted={onSessionDeleted}
+          depth={0}
+        />
+      ))}
+    </div>
+  );
+}
+
 function SessionTreeItem({
   node,
   selectedSessionId,
+  topics,
+  sessionTopics,
   onSelectSession,
+  onSessionMoved,
   onRenamed,
   onSessionDeleted,
   depth,
 }: {
   node: SessionTreeNode;
   selectedSessionId: string | null;
+  topics: TopicInfo[];
+  sessionTopics: Record<string, string>;
   onSelectSession: (s: SessionInfo) => void;
+  onSessionMoved?: () => void;
   onRenamed?: () => void;
   onSessionDeleted?: (id: string) => void;
   depth: number;
@@ -937,6 +1241,9 @@ function SessionTreeItem({
           onClick={() => onSelectSession(node.session)}
           onRenamed={onRenamed}
           onDeleted={(id) => onSessionDeleted?.(id)}
+          topics={topics}
+          currentTopicId={sessionTopics[node.session.id] ?? null}
+          onMoved={onSessionMoved}
           depth={depth}
           hasChildren={hasChildren}
           collapsed={collapsed}
@@ -950,7 +1257,10 @@ function SessionTreeItem({
               key={child.session.id}
               node={child}
               selectedSessionId={selectedSessionId}
+              topics={topics}
+              sessionTopics={sessionTopics}
               onSelectSession={onSelectSession}
+              onSessionMoved={onSessionMoved}
               onRenamed={onRenamed}
               onSessionDeleted={onSessionDeleted}
               depth={depth + 1}
@@ -968,6 +1278,9 @@ function SessionItem({
   onClick,
   onRenamed,
   onDeleted,
+  topics,
+  currentTopicId,
+  onMoved,
   depth = 0,
   hasChildren = false,
   collapsed = false,
@@ -978,6 +1291,9 @@ function SessionItem({
   onClick: () => void;
   onRenamed?: () => void;
   onDeleted?: (id: string) => void;
+  topics: TopicInfo[];
+  currentTopicId: string | null;
+  onMoved?: () => void;
   depth?: number;
   hasChildren?: boolean;
   collapsed?: boolean;
@@ -1036,6 +1352,16 @@ function SessionItem({
     e.stopPropagation();
     setConfirmDelete(false);
   }, []);
+
+  const handleMoveTopic = useCallback(async (topicId: string | null) => {
+    if (topicId === currentTopicId) return;
+    await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topicId }),
+    });
+    onMoved?.();
+  }, [currentTopicId, session.id, onMoved]);
 
   // Fixed-height outer wrapper — content swaps in place so the list never reflows
   const ITEM_HEIGHT = 54;
@@ -1185,6 +1511,32 @@ function SessionItem({
           {/* Action buttons — shown on hover */}
           {hovered && (
             <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+              <select
+                value={currentTopicId ?? ""}
+                title="Move to topic"
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  void handleMoveTopic(e.currentTarget.value || null);
+                }}
+                style={{
+                  width: 92,
+                  height: 32,
+                  padding: "0 6px",
+                  background: "var(--bg-hover)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 7,
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                  fontSize: 11,
+                  outline: "none",
+                }}
+              >
+                <option value="">No Topic</option>
+                {topics.map((topic) => (
+                  <option key={topic.id} value={topic.id}>{topic.name}</option>
+                ))}
+              </select>
               <button
                 onClick={startRename}
                 title="Rename"

@@ -183,6 +183,21 @@ export interface SessionInfo {
   parentSessionId?: string; // set if this session was forked from another
 }
 
+export interface TopicInfo {
+  id: string;
+  cwd: string;
+  name: string;
+  created: string;
+  updated: string;
+  sortOrder: number;
+}
+
+export interface TopicStore {
+  version: 1;
+  topics: TopicInfo[];
+  sessionTopics: Record<string, string>;
+}
+
 export interface SessionContext {
   messages: AgentMessage[];
   entryIds: string[]; // parallel to messages — the session entry id for each message
