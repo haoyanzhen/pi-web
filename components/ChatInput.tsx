@@ -74,6 +74,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isComposingRef = useRef(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownPanelRef = useRef<HTMLDivElement>(null);
   const toolDropdownRef = useRef<HTMLDivElement>(null);
@@ -185,7 +186,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      const nativeEvent = e.nativeEvent as KeyboardEvent<HTMLTextAreaElement>["nativeEvent"] & { keyCode?: number };
+      const isImeComposing = isComposingRef.current || nativeEvent.isComposing || nativeEvent.keyCode === 229;
+
+      if (e.key === "Enter" && !e.shiftKey && !isImeComposing) {
         e.preventDefault();
         if (isStreaming && (onSteer || onFollowUp)) {
           // Default Enter sends as steer if available, else followup
@@ -197,6 +201,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     },
     [isStreaming, onSteer, onFollowUp, sendQueued, handleSend]
   );
+
+  const handleCompositionStart = useCallback(() => {
+    isComposingRef.current = true;
+  }, []);
+
+  const handleCompositionEnd = useCallback(() => {
+    // Some IMEs dispatch the Enter key event that confirms a candidate after compositionend.
+    window.setTimeout(() => {
+      isComposingRef.current = false;
+    }, 0);
+  }, []);
 
   const handleInput = useCallback(() => {
     const ta = textareaRef.current;
@@ -351,6 +366,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={handleKeyDown}
+            onCompositionStart={handleCompositionStart}
+            onCompositionEnd={handleCompositionEnd}
             onInput={handleInput}
             onPaste={handlePaste}
             placeholder={
