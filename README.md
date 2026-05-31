@@ -4,20 +4,31 @@
 
 ## 快速开始
 
-**无需安装，直接运行：**
+**运行当前版本：**
+
+```bash
+git clone https://github.com/haoyanzhen/pi-web.git
+cd pi-web
+npm install
+npm run dev
+```
+
+启动后打开 [http://localhost:30141](http://localhost:30141)。
+
+**运行源开发者版本**
+
+无需安装，直接运行：
 
 ```bash
 npx @agegr/pi-web@latest
 ```
 
-**或全局安装后使用：**
+或全局安装后使用：
 
 ```bash
 npm install -g @agegr/pi-web
 pi-web
 ```
-
-启动后打开 [http://localhost:30141](http://localhost:30141)。
 
 **可选参数：**
 
@@ -31,7 +42,7 @@ PORT=8080 pi-web                 # 也支持环境变量
 
 **远程访问：**
 
-若需要远程访问，需要环境变量。建议把固定远程访问配置放在本机用户环境文件 `~/.pi/web.env`：
+（**仅当前版本支持该加密远程访问配置**）若需要远程访问，需要环境变量。建议把固定远程访问配置放在本机用户环境文件 `~/.pi/web.env`：
 
 ```bash
 PI_WEB_REMOTE=1
@@ -79,6 +90,13 @@ pi-web
 ```bash
 npm install
 npm run dev   # 端口 30141
+```
+
+开发时不要运行 `next build`。如需检查类型或代码风格：
+
+```bash
+node_modules/.bin/tsc --noEmit
+npm run lint
 ```
 
 ## 项目结构
