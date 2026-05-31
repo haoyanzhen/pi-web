@@ -409,6 +409,17 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     onNewSession?.(tempId, trustedCwd, selectedTopicId);
   }, [selectedCwd, onNewSession, selectCwd, selectedTopicId]);
 
+  const handleNewSessionForTopic = useCallback(async (topicId: string | null) => {
+    if (!selectedCwd) return;
+    const trustedCwd = await selectCwd(selectedCwd);
+    if (!trustedCwd) return;
+    const tempId = typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+    setSelectedTopicId(topicId);
+    onNewSession?.(tempId, trustedCwd, topicId);
+  }, [selectedCwd, onNewSession, selectCwd]);
+
   const handleCreateTopic = useCallback(async () => {
     if (!selectedCwd) return;
     const name = window.prompt("Topic name");
@@ -856,6 +867,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             onSelectTopic={setSelectedTopicId}
             onRenameTopic={handleRenameTopic}
             onDeleteTopic={handleDeleteTopic}
+            onNewSession={handleNewSessionForTopic}
             onSelectSession={onSelectSession}
             onSessionMoved={handleSessionMoved}
             onRenamed={loadSessions}
@@ -1056,6 +1068,7 @@ function TopicSection({
   onSelectTopic,
   onRenameTopic,
   onDeleteTopic,
+  onNewSession,
   onSelectSession,
   onSessionMoved,
   onRenamed,
@@ -1069,6 +1082,7 @@ function TopicSection({
   onSelectTopic: (topicId: string | null) => void;
   onRenameTopic: (topic: TopicInfo) => void;
   onDeleteTopic: (topic: TopicInfo) => void;
+  onNewSession: (topicId: string | null) => void;
   onSelectSession: (s: SessionInfo) => void;
   onSessionMoved?: () => void;
   onRenamed?: () => void;
@@ -1136,6 +1150,31 @@ function TopicSection({
           {title}
         </span>
         <span style={{ color: "var(--text-dim)", fontSize: 11, flexShrink: 0 }}>{group.sessionCount}</span>
+        <button
+          onClick={(e) => { e.stopPropagation(); onNewSession(topicId); }}
+          title={`New session in ${title}`}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 22,
+            height: 22,
+            padding: 0,
+            background: "none",
+            border: "none",
+            borderRadius: 5,
+            color: "var(--text-dim)",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--accent)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text-dim)"; }}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round">
+            <line x1="6" y1="1.5" x2="6" y2="10.5" />
+            <line x1="1.5" y1="6" x2="10.5" y2="6" />
+          </svg>
+        </button>
         {group.topic && (
           <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
             <button
@@ -1304,6 +1343,7 @@ function SessionItem({
   const [renameValue, setRenameValue] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [topicMenuOpen, setTopicMenuOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const title = session.name || session.firstMessage.slice(0, 50) || session.id.slice(0, 12);
@@ -1355,6 +1395,7 @@ function SessionItem({
 
   const handleMoveTopic = useCallback(async (topicId: string | null) => {
     if (topicId === currentTopicId) return;
+    setTopicMenuOpen(false);
     await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1370,7 +1411,7 @@ function SessionItem({
     <div
       onClick={confirmDelete || renaming ? undefined : onClick}
       onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); }}
+      onMouseLeave={() => { setHovered(false); setTopicMenuOpen(false); }}
       style={{
         height: ITEM_HEIGHT,
         display: "flex",
@@ -1387,7 +1428,8 @@ function SessionItem({
         transition: "background 0.1s",
         opacity: deleting ? 0.5 : 1,
         gap: 6,
-        overflow: "hidden",
+        overflow: topicMenuOpen ? "visible" : "hidden",
+        position: "relative",
       }}
     >
       {confirmDelete ? (
@@ -1509,34 +1551,92 @@ function SessionItem({
           )}
 
           {/* Action buttons — shown on hover */}
-          {hovered && (
+          {(hovered || topicMenuOpen) && (
             <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-              <select
-                value={currentTopicId ?? ""}
-                title="Move to topic"
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => {
-                  e.stopPropagation();
-                  void handleMoveTopic(e.currentTarget.value || null);
-                }}
-                style={{
-                  width: 92,
-                  height: 32,
-                  padding: "0 6px",
-                  background: "var(--bg-hover)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 7,
-                  color: "var(--text-muted)",
-                  cursor: "pointer",
-                  fontSize: 11,
-                  outline: "none",
-                }}
-              >
-                <option value="">No Topic</option>
-                {topics.map((topic) => (
-                  <option key={topic.id} value={topic.id}>{topic.name}</option>
-                ))}
-              </select>
+              <div style={{ position: "relative", flexShrink: 0 }}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setTopicMenuOpen((v) => !v); }}
+                  title="Move to topic"
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 32, height: 32, padding: 0,
+                    background: topicMenuOpen ? "var(--bg-selected)" : "var(--bg-hover)",
+                    border: `1px solid ${topicMenuOpen ? "rgba(37,99,235,0.35)" : "var(--border)"}`,
+                    borderRadius: 7,
+                    color: topicMenuOpen ? "var(--accent)" : "var(--text-muted)",
+                    cursor: "pointer",
+                    flexShrink: 0,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    fontFamily: "var(--font-mono)",
+                    transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "var(--bg-selected)";
+                    e.currentTarget.style.color = "var(--accent)";
+                    e.currentTarget.style.borderColor = "rgba(37,99,235,0.35)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = topicMenuOpen ? "var(--bg-selected)" : "var(--bg-hover)";
+                    e.currentTarget.style.color = topicMenuOpen ? "var(--accent)" : "var(--text-muted)";
+                    e.currentTarget.style.borderColor = topicMenuOpen ? "rgba(37,99,235,0.35)" : "var(--border)";
+                  }}
+                >
+                  T
+                </button>
+                {topicMenuOpen && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      position: "absolute",
+                      top: 36,
+                      right: 0,
+                      zIndex: 30,
+                      minWidth: 132,
+                      maxWidth: 180,
+                      padding: 4,
+                      background: "var(--bg)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 7,
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.14)",
+                    }}
+                  >
+                    {([{ id: null, name: "No Topic" }, ...topics.map((topic) => ({ id: topic.id, name: topic.name }))] as { id: string | null; name: string }[]).map((topic) => {
+                      const active = topic.id === currentTopicId;
+                      return (
+                        <button
+                          key={topic.id ?? "__none__"}
+                          onClick={(e) => { e.stopPropagation(); void handleMoveTopic(topic.id); }}
+                          style={{
+                            width: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            height: 26,
+                            padding: "0 7px",
+                            background: active ? "var(--bg-selected)" : "transparent",
+                            border: "none",
+                            borderRadius: 5,
+                            color: active ? "var(--accent)" : "var(--text-muted)",
+                            cursor: "pointer",
+                            fontSize: 11,
+                            textAlign: "left",
+                          }}
+                        >
+                          <span style={{ width: 10, height: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            {active && (
+                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="1.5 5 4 7.5 8.5 2.5" />
+                              </svg>
+                            )}
+                          </span>
+                          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{topic.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               <button
                 onClick={startRename}
                 title="Rename"
