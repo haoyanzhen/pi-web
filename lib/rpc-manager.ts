@@ -72,7 +72,23 @@ export class AgentSessionWrapper {
       case "prompt": {
         // Fire and forget — events come via subscribe
         const promptImages = command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
-        this.inner.prompt(command.message as string, promptImages?.length ? { images: promptImages } : undefined).catch(() => {});
+        this.inner.prompt(command.message as string, promptImages?.length ? { images: promptImages } : undefined).catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          const model = this.inner.model;
+          const assistantMessage = {
+            role: "assistant",
+            content: [{ type: "text", text: `Request failed: ${message}` }],
+            model: model?.id ?? "",
+            provider: model?.provider ?? "",
+            stopReason: "error",
+            errorMessage: message,
+            timestamp: Date.now(),
+          };
+          for (const listener of this.listeners) {
+            listener({ type: "message_end", message: assistantMessage });
+            listener({ type: "agent_end", errorMessage: message });
+          }
+        });
         return null;
       }
 

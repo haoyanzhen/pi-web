@@ -445,13 +445,25 @@ const DEEPSEEK_COMPAT = {
   requiresReasoningContentOnAssistantMessages: true,
 } as const;
 
+const DEEPSEEK_THINKING_LEVEL_MAP = {
+  minimal: null,
+  low: null,
+  medium: null,
+  high: "high",
+  xhigh: "max",
+} satisfies Record<string, string | null>;
+
 function hasDeepseekCompat(model: ModelEntry): boolean {
   return model.compat?.thinkingFormat === "deepseek";
 }
 
 function setDeepseekCompat(model: ModelEntry, enabled: boolean): ModelEntry {
   if (enabled) {
-    return { ...model, compat: { ...(model.compat ?? {}), ...DEEPSEEK_COMPAT } };
+    return {
+      ...model,
+      thinkingLevelMap: model.thinkingLevelMap ?? DEEPSEEK_THINKING_LEVEL_MAP,
+      compat: { ...(model.compat ?? {}), ...DEEPSEEK_COMPAT },
+    };
   }
   if (!model.compat) return model;
   const rest = { ...model.compat };
