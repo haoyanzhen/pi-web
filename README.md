@@ -4,33 +4,30 @@
 
 ## 快速开始
 
-**运行当前版本：**
+### 源仓库
+
+pi-web 基于 [pi 编程智能体源仓库](https://github.com/badlogic/pi-mono)。
+
+pi-web 的原仓库在 [pi-web](https://github.com/agegr/pi-web)
+
+非常感谢 badlogic 和 agegr 等源仓库作者的开源，为保持简洁，本仓库不再重复维护源仓库的启动命令。
+
+### 当前仓库：本地安装和启动
+
+从 Git 下载当前仓库后运行：
 
 ```bash
 git clone https://github.com/haoyanzhen/pi-web.git
 cd pi-web
-npm install
-npm run dev
+npm install -g .
+pi-web
 ```
 
 启动后打开 [http://localhost:30141](http://localhost:30141)。
 
-**运行源开发者版本**
+之后可以在任意目录直接运行 `pi-web`。
 
-无需安装，直接运行：
-
-```bash
-npx @agegr/pi-web@latest
-```
-
-或全局安装后使用：
-
-```bash
-npm install -g @agegr/pi-web
-pi-web
-```
-
-**可选参数：**
+### 可选参数
 
 ```bash
 pi-web --port 8080               # 自定义端口
@@ -40,9 +37,9 @@ pi-web -p 8080 -H 127.0.0.1     # 组合使用
 PORT=8080 pi-web                 # 也支持环境变量
 ```
 
-**远程访问：**
+### 远程访问
 
-（**仅当前版本支持该加密远程访问配置**）若需要远程访问，需要环境变量。建议把固定远程访问配置放在本机用户环境文件 `~/.pi/web.env`：
+（**此版本支持对远程访问进行加密配置**）若需要远程访问，需要环境变量。建议把固定远程访问配置放在本机用户环境文件 `~/.pi/web.env`：
 
 ```bash
 PI_WEB_REMOTE=1
@@ -59,7 +56,7 @@ pi-web
 
 远程模式建议使用官方主流浏览器和可信的独立浏览器 profile，尽量减少扩展，不要在共享或不受信任的设备上登录。
 
-可能的安全风险：
+**仍然可能存在的安全风险**：
 
 1. 密码泄露
 2. 浏览器恶意扩展读取页面内容
@@ -89,7 +86,7 @@ pi-web
 
 ```bash
 npm install
-npm run dev   # 端口 30141
+npm run dev
 ```
 
 开发时不要运行 `next build`。如需检查类型或代码风格：
