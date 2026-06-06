@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useTheme } from "@/hooks/useTheme";
 import { encodeFilePathForApi, getFileName, getRelativeFilePath } from "@/lib/file-paths";
+import { DownloadButton } from "./DownloadButton";
 
 interface Props {
   filePath: string;
@@ -67,75 +68,11 @@ function getDownloadUrl(filePath: string, cwd?: string): string | null {
   return `/api/files/download?${params.toString()}`;
 }
 
-function PreviewDownloadButton({ filePath, cwd }: { filePath: string; cwd?: string }) {
+function FileDownloadButton({ filePath, cwd, iconOnly = false }: { filePath: string; cwd?: string; iconOnly?: boolean }) {
   const url = getDownloadUrl(filePath, cwd);
   if (!url) return null;
 
-  return (
-    <button
-      onClick={() => {
-        window.location.href = url;
-      }}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 7,
-        height: 32,
-        padding: "0 12px",
-        background: "var(--bg-hover)",
-        border: "1px solid var(--border)",
-        borderRadius: 6,
-        color: "var(--text)",
-        cursor: "pointer",
-        fontSize: 12,
-        fontWeight: 600,
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = "var(--bg-selected)";
-        e.currentTarget.style.color = "var(--accent)";
-        e.currentTarget.style.borderColor = "rgba(37,99,235,0.35)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = "var(--bg-hover)";
-        e.currentTarget.style.color = "var(--text)";
-        e.currentTarget.style.borderColor = "var(--border)";
-      }}
-    >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-        <polyline points="7 10 12 15 17 10" />
-        <line x1="12" y1="15" x2="12" y2="3" />
-      </svg>
-      Download
-    </button>
-  );
-}
-
-function DownloadLink({ filePath, cwd, label = "Download" }: { filePath: string; cwd?: string; label?: string }) {
-  const downloadUrl = getDownloadUrl(filePath, cwd);
-  const encoded = encodeFilePathForApi(filePath);
-  const href = downloadUrl ?? `/api/files/${encoded}?type=read`;
-
-  return (
-    <a
-      href={href}
-      download={getFileName(filePath)}
-      style={{
-        color: "var(--text-muted)",
-        textDecoration: "none",
-        border: "1px solid var(--border)",
-        borderRadius: 5,
-        padding: "2px 8px",
-        fontSize: 11,
-        lineHeight: 1.4,
-        background: "var(--bg-hover)",
-        flexShrink: 0,
-      }}
-    >
-      {label}
-    </a>
-  );
+  return <DownloadButton href={url} download={getFileName(filePath)} iconOnly={iconOnly} title={`Download ${getFileName(filePath)}`} />;
 }
 
 // Myers diff — returns line-level unified diff
@@ -431,6 +368,7 @@ function ImageViewer({ filePath, cwd }: { filePath: string; cwd?: string }) {
         <span style={{ marginLeft: "auto" }}>{ext || "image"}</span>
         {naturalSize && <span>{naturalSize.w} × {naturalSize.h}</span>}
         {formatSizeStr && <span>{formatSizeStr}</span>}
+        <FileDownloadButton filePath={filePath} cwd={cwd} iconOnly />
         <span
           title={watching ? "Live sync active" : "Not watching"}
           style={{ display: "flex", alignItems: "center", gap: 4, color: watching ? "#4ade80" : "var(--text-dim)" }}
@@ -466,7 +404,7 @@ function ImageViewer({ filePath, cwd }: { filePath: string; cwd?: string }) {
         {error ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
             <div style={{ color: "#f87171", fontSize: 13 }}>{error}</div>
-            <PreviewDownloadButton filePath={filePath} cwd={cwd} />
+            <FileDownloadButton filePath={filePath} cwd={cwd} />
           </div>
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
@@ -568,6 +506,7 @@ function AudioViewer({ filePath, cwd }: { filePath: string; cwd?: string }) {
         <span style={{ marginLeft: "auto" }}>{ext || "audio"}</span>
         {duration != null && <span>{formatDuration(duration)}</span>}
         {size != null && <span>{formatSize(size)}</span>}
+        <FileDownloadButton filePath={filePath} cwd={cwd} iconOnly />
         <span
           title={watching ? "Live sync active" : "Not watching"}
           style={{ display: "flex", alignItems: "center", gap: 4, color: watching ? "#4ade80" : "var(--text-dim)" }}
@@ -599,7 +538,7 @@ function AudioViewer({ filePath, cwd }: { filePath: string; cwd?: string }) {
           {error && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, color: "#f87171", fontSize: 13, marginBottom: 12, textAlign: "center" }}>
               {error}
-              <PreviewDownloadButton filePath={filePath} cwd={cwd} />
+              <FileDownloadButton filePath={filePath} cwd={cwd} />
             </div>
           )}
           <audio
@@ -702,7 +641,7 @@ function DocumentViewer({ filePath, cwd }: { filePath: string; cwd?: string }) {
         </span>
         <span style={{ marginLeft: "auto" }}>{ext === "docx" ? "docx preview" : "pdf"}</span>
         {size != null && <span>{formatSize(size)}</span>}
-        <DownloadLink filePath={filePath} cwd={cwd} />
+        <FileDownloadButton filePath={filePath} cwd={cwd} iconOnly />
         <span
           title={watching ? "Live sync active" : "Not watching"}
           style={{ display: "flex", alignItems: "center", gap: 4, color: watching ? "#4ade80" : "var(--text-dim)", flexShrink: 0 }}
@@ -724,7 +663,7 @@ function DocumentViewer({ filePath, cwd }: { filePath: string; cwd?: string }) {
         {error ? (
           <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24, color: "#f87171", fontSize: 13, textAlign: "center" }}>
             <div>{error}</div>
-            <DownloadLink filePath={filePath} cwd={cwd} />
+            <FileDownloadButton filePath={filePath} cwd={cwd} />
           </div>
         ) : (
           <iframe
@@ -852,7 +791,7 @@ function TextFileViewer({ filePath, cwd }: Props) {
     return (
       <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: "#f87171", fontSize: 13 }}>
         <div>{error}</div>
-        <PreviewDownloadButton filePath={filePath} cwd={cwd} />
+        <FileDownloadButton filePath={filePath} cwd={cwd} />
       </div>
     );
   }
@@ -886,6 +825,7 @@ function TextFileViewer({ filePath, cwd }: Props) {
         <span style={{ marginLeft: "auto" }}>{data.language}</span>
         {viewMode === "source" && <span>{lines.length} lines</span>}
         <span>{formatSize(data.size)}</span>
+        <FileDownloadButton filePath={filePath} cwd={cwd} iconOnly />
 
         {/* Live watch indicator */}
         <span
