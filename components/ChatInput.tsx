@@ -47,6 +47,7 @@ export interface ChatInputHandle {
 
 const TOOL_PRESETS = ["off", "default", "full"] as const;
 const TOOL_PRESET_MAP: Record<"off" | "default" | "full", "none" | "default" | "full"> = { off: "none", default: "default", full: "full" };
+const COMPOSITION_END_ENTER_GRACE_MS = 100;
 
 const THINKING_LEVELS = ["auto", "off", "minimal", "low", "medium", "high", "xhigh"] as const;
 const THINKING_LEVEL_DESC: Record<typeof THINKING_LEVELS[number], string> = {
@@ -75,6 +76,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isComposingRef = useRef(false);
+  const lastCompositionEndAtRef = useRef(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownPanelRef = useRef<HTMLDivElement>(null);
   const toolDropdownRef = useRef<HTMLDivElement>(null);
@@ -187,9 +189,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       const nativeEvent = e.nativeEvent as KeyboardEvent<HTMLTextAreaElement>["nativeEvent"] & { keyCode?: number };
+      const recentlyComposed = Date.now() - lastCompositionEndAtRef.current < COMPOSITION_END_ENTER_GRACE_MS;
       const isImeComposing = isComposingRef.current || nativeEvent.isComposing || nativeEvent.keyCode === 229;
 
-      if (e.key === "Enter" && !e.shiftKey && !isImeComposing) {
+      if (e.key === "Enter" && !e.shiftKey && (isImeComposing || recentlyComposed)) {
+        if (recentlyComposed) e.preventDefault();
+        return;
+      }
+
+      if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         if (isStreaming && (onSteer || onFollowUp)) {
           // Default Enter sends as steer if available, else followup
@@ -207,10 +215,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, []);
 
   const handleCompositionEnd = useCallback(() => {
-    // Some IMEs dispatch the Enter key event that confirms a candidate after compositionend.
-    window.setTimeout(() => {
-      isComposingRef.current = false;
-    }, 0);
+    isComposingRef.current = false;
+    lastCompositionEndAtRef.current = Date.now();
   }, []);
 
   const handleInput = useCallback(() => {
