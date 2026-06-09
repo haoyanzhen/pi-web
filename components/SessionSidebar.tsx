@@ -848,12 +848,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 minWidth: 0,
                 height: 28,
                 padding: "0 9px",
-                background: selectedTopicId === null ? "var(--bg-selected)" : "var(--bg-hover)",
-                border: `1px solid ${selectedTopicId === null ? "rgba(37,99,235,0.35)" : "var(--border)"}`,
+                background: selectedTopicId === null ? "color-mix(in srgb, var(--accent) 16%, var(--bg-panel))" : "var(--bg-hover)",
+                border: `1px solid ${selectedTopicId === null ? "color-mix(in srgb, var(--accent) 42%, var(--border))" : "var(--border)"}`,
                 borderRadius: 7,
                 color: selectedTopicId === null ? "var(--accent)" : "var(--text-muted)",
                 cursor: "pointer",
                 fontSize: 11,
+                fontWeight: selectedTopicId === null ? 700 : 500,
                 textAlign: "left",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -1119,11 +1120,11 @@ function TopicSection({
           alignItems: "center",
           gap: 6,
           padding: "0 8px 0 10px",
-          background: selected ? "color-mix(in srgb, var(--accent) 9%, transparent)" : "transparent",
+          background: selected ? "color-mix(in srgb, var(--accent) 16%, var(--bg-panel))" : "var(--bg-panel)",
           borderTop: "1px solid var(--border)",
           borderLeft: selected ? "2px solid var(--accent)" : "2px solid transparent",
           cursor: "pointer",
-          color: selected ? "var(--text)" : "var(--text-muted)",
+          color: selected ? "var(--accent)" : "var(--text-muted)",
         }}
       >
         <button
@@ -1157,15 +1158,32 @@ function TopicSection({
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: 700,
-            letterSpacing: "0.04em",
+            letterSpacing: "0.03em",
             textTransform: "uppercase",
           }}
         >
           {title}
         </span>
-        <span style={{ color: "var(--text-dim)", fontSize: 11, flexShrink: 0 }}>{group.sessionCount}</span>
+        <span
+          style={{
+            minWidth: 20,
+            height: 18,
+            padding: "0 6px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 9,
+            background: selected ? "color-mix(in srgb, var(--accent) 14%, var(--bg-hover))" : "var(--bg-hover)",
+            color: selected ? "var(--accent)" : "var(--text-dim)",
+            fontSize: 11,
+            fontWeight: 650,
+            flexShrink: 0,
+          }}
+        >
+          {group.sessionCount}
+        </span>
         <button
           onClick={(e) => { e.stopPropagation(); onNewSession(topicId); }}
           title={`New session in ${title}`}
@@ -1421,7 +1439,7 @@ function SessionItem({
   }, [currentTopicId, session.id, onMoved]);
 
   // Fixed-height outer wrapper — content swaps in place so the list never reflows
-  const ITEM_HEIGHT = 54;
+  const ITEM_HEIGHT = 48;
 
   return (
     <div
@@ -1528,9 +1546,9 @@ function SessionItem({
           <div style={{ flex: 1, minWidth: 0 }}>
             <div
               style={{
-                fontSize: 12,
-                fontWeight: isSelected ? 500 : 400,
-                lineHeight: 1.4,
+                fontSize: 12.5,
+                fontWeight: isSelected ? 600 : 500,
+                lineHeight: 1.35,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
@@ -1540,7 +1558,7 @@ function SessionItem({
             >
               {title}
             </div>
-            <div style={{ marginTop: 2, display: "flex", gap: 8, color: "var(--text-dim)", fontSize: 11 }}>
+            <div style={{ marginTop: 1, display: "flex", gap: 6, color: "var(--text-dim)", fontSize: 11 }}>
               <span title={session.modified}>{formatRelativeTime(session.modified)}</span>
               <span>{session.messageCount} msgs</span>
             </div>
@@ -1575,7 +1593,7 @@ function SessionItem({
                   title="Move to topic"
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    width: 32, height: 32, padding: 0,
+                    width: 28, height: 28, padding: 0,
                     background: topicMenuOpen ? "var(--bg-selected)" : "var(--bg-hover)",
                     border: `1px solid ${topicMenuOpen ? "rgba(37,99,235,0.35)" : "var(--border)"}`,
                     borderRadius: 7,
@@ -1605,7 +1623,7 @@ function SessionItem({
                     onClick={(e) => e.stopPropagation()}
                     style={{
                       position: "absolute",
-                      top: 36,
+                      top: 32,
                       right: 0,
                       zIndex: 30,
                       minWidth: 132,
@@ -1658,7 +1676,7 @@ function SessionItem({
                 title="Rename"
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 32, height: 32, padding: 0,
+                  width: 28, height: 28, padding: 0,
                   background: "var(--bg-hover)", border: "1px solid var(--border)",
                   borderRadius: 7, color: "var(--text-muted)",
                   cursor: "pointer", flexShrink: 0,
@@ -1675,7 +1693,7 @@ function SessionItem({
                   e.currentTarget.style.borderColor = "var(--border)";
                 }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
                 </svg>
               </button>
@@ -1684,7 +1702,7 @@ function SessionItem({
                 title="Delete"
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 32, height: 32, padding: 0,
+                  width: 28, height: 28, padding: 0,
                   background: "var(--bg-hover)", border: "1px solid var(--border)",
                   borderRadius: 7, color: "var(--text-muted)",
                   cursor: "pointer", flexShrink: 0,
@@ -1701,7 +1719,7 @@ function SessionItem({
                   e.currentTarget.style.borderColor = "var(--border)";
                 }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="3 6 5 6 21 6" />
                   <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
                   <path d="M10 11v6M14 11v6" />
