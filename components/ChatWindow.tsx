@@ -96,13 +96,13 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
     agentRunning, modelNames, modelList, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, displayModel: displayModelValue, sessionStats,
-    agentPhase,
+    agentPhase, showScrollToBottom,
     isNew,
     messagesEndRef, scrollContainerRef,
     lastUserMsgRef,
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
     handleCompact, handleSteer, handleFollowUp, handleAbortCompaction,
-    handleToolPresetChange, handleThinkingLevelChange, handleAgentEventRef,
+    handleToolPresetChange, handleThinkingLevelChange, handleAgentEventRef, handleScrollToBottom,
   } = useAgentSession({
     session, newSessionCwd, onAgentEnd, onSessionCreated, onSessionForked,
     modelsRefreshKey, onBranchDataChange, onSystemPromptChange,
@@ -370,6 +370,37 @@ export function ChatWindow({ session, newSessionCwd, onAgentEnd, onSessionCreate
           scrollContainer={scrollContainerRef}
           messageRefs={messageRefs}
         />
+        {showScrollToBottom && (
+          <button
+            type="button"
+            onClick={handleScrollToBottom}
+            title="直达底部"
+            aria-label="直达底部"
+            style={{
+              position: "absolute",
+              right: 52,
+              bottom: 18,
+              width: 34,
+              height: 34,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+              border: "1px solid var(--border)",
+              borderRadius: "50%",
+              background: "var(--bg-panel)",
+              color: "var(--text)",
+              boxShadow: "0 8px 22px rgba(0,0,0,0.16)",
+              cursor: "pointer",
+              zIndex: 5,
+            }}
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 5v14" />
+              <path d="m19 12-7 7-7-7" />
+            </svg>
+          </button>
+        )}
       </div>
 
       <div className="relative">

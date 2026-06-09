@@ -138,6 +138,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [isCompacting, setIsCompacting] = useState(false);
   const [compactError, setCompactError] = useState<string | null>(null);
   const [agentPhase, setAgentPhase] = useState<AgentPhase>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const sessionIdRef = useRef<string | null>(session?.id ?? null);
@@ -174,11 +175,23 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     return total > 0 ? { tokens, cost } : null;
   })();
 
-  const isNearBottom = useCallback(() => {
+  const getBottomDistance = useCallback(() => {
     const el = scrollContainerRef.current;
-    if (!el) return true;
-    return el.scrollHeight - el.scrollTop - el.clientHeight < 96;
+    return el ? el.scrollHeight - el.scrollTop - el.clientHeight : 0;
   }, []);
+
+  const isNearBottom = useCallback(() => {
+    return getBottomDistance() < 96;
+  }, [getBottomDistance]);
+
+  const isAtBottom = useCallback(() => {
+    return getBottomDistance() < 8;
+  }, [getBottomDistance]);
+
+  const updateScrollToBottomVisibility = useCallback(() => {
+    const el = scrollContainerRef.current;
+    setShowScrollToBottom(Boolean(el && el.scrollHeight > el.clientHeight + 8 && !isAtBottom()));
+  }, [isAtBottom]);
 
   const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false) => {
     try {
@@ -608,6 +621,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     messagesEndRef.current?.scrollIntoView({ behavior });
   }, []);
 
+  const handleScrollToBottom = useCallback(() => {
+    autoFollowScrollRef.current = true;
+    setShowScrollToBottom(false);
+    scrollToBottom("smooth");
+  }, [scrollToBottom]);
+
   const scrollUserMsgToTop = useCallback(() => {
     const container = scrollContainerRef.current;
     const el = lastUserMsgRef.current;
@@ -658,16 +677,28 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (!el) return;
     const onScroll = () => {
       autoFollowScrollRef.current = isNearBottom();
+      updateScrollToBottomVisibility();
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
-  }, [isNearBottom]);
+  }, [isNearBottom, updateScrollToBottomVisibility]);
 
   useEffect(() => {
     if (streamState.isStreaming && streamState.streamingMessage && autoFollowScrollRef.current) {
       scrollToBottom("instant");
     }
-  }, [streamState.streamingMessage, streamState.isStreaming, scrollToBottom]);
+    requestAnimationFrame(updateScrollToBottomVisibility);
+  }, [streamState.streamingMessage, streamState.isStreaming, scrollToBottom, updateScrollToBottomVisibility]);
+
+  useEffect(() => {
+    requestAnimationFrame(updateScrollToBottomVisibility);
+  }, [messages.length, updateScrollToBottomVisibility]);
+
+  useEffect(() => {
+    if (showScrollToBottom && isAtBottom()) {
+      setShowScrollToBottom(false);
+    }
+  }, [showScrollToBottom, isAtBottom]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -717,7 +748,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     agentRunning, modelNames, modelList, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, currentModel, displayModel, sessionStats,
-    agentPhase,
+    agentPhase, showScrollToBottom,
     isNew,
     // Refs
     sessionIdRef, eventSourceRef, messagesEndRef, scrollContainerRef,
@@ -726,7 +757,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
     handleCompact, handleSteer, handleFollowUp, handleAbortCompaction,
     handleToolPresetChange, handleThinkingLevelChange, loadTools, setActiveLeafId, setData, setMessages,
-    dispatch, setAgentRunning, setForkingEntryId,
+    dispatch, setAgentRunning, setForkingEntryId, handleScrollToBottom,
     // Subscriptions
     handleAgentEventRef,
   };
