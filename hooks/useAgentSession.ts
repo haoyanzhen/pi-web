@@ -49,6 +49,30 @@ interface AgentEvent {
   [key: string]: unknown;
 }
 
+function messageContentKey(message: Pick<AgentMessage, "role" | "content">): string {
+  return `${message.role}:${typeof message.content === "string" ? message.content : JSON.stringify(message.content)}`;
+}
+
+function mergePendingMessages(messages: AgentMessage[], pending: AgentMessage[]): AgentMessage[] {
+  if (pending.length === 0) return messages;
+  const merged = [...messages];
+  for (const pendingMsg of pending) {
+    const pendingTime = (pendingMsg as AgentMessage & { timestamp?: number }).timestamp;
+    const insertAt = typeof pendingTime === "number"
+      ? merged.findIndex((msg) => {
+          const msgTime = (msg as AgentMessage & { timestamp?: number }).timestamp;
+          return typeof msgTime === "number" && msgTime >= pendingTime;
+        })
+      : -1;
+    if (insertAt === -1) {
+      merged.push(pendingMsg);
+    } else {
+      merged.splice(insertAt, 0, pendingMsg);
+    }
+  }
+  return merged;
+}
+
 export type AgentPhase =
   | { kind: "waiting_model" }
   | { kind: "running_tools"; tools: { id: string; name: string }[] }
@@ -122,6 +146,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const initialScrollDoneRef = useRef(false);
   const lastUserMsgRef = useRef<HTMLDivElement | null>(null);
   const pendingScrollToUserRef = useRef(false);
+  const pendingUserMessagesRef = useRef<AgentMessage[]>([]);
+  const autoFollowScrollRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -148,6 +174,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     return total > 0 ? { tokens, cost } : null;
   })();
 
+  const isNearBottom = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 96;
+  }, []);
+
   const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false) => {
     try {
       if (showLoading) setLoading(true);
@@ -166,10 +198,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as SessionData & { agentState?: { running: boolean; state?: { isStreaming?: boolean; isCompacting?: boolean; contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null } | null; systemPrompt?: string; thinkingLevel?: string } } };
+      const loadedKeys = new Set(d.context.messages.map(messageContentKey));
+      const stillPending = pendingUserMessagesRef.current.filter((msg) => !loadedKeys.has(messageContentKey(msg)));
+      pendingUserMessagesRef.current = stillPending;
       setData(d);
       setActiveLeafId(d.leafId);
-      setMessages(d.context.messages);
-      setEntryIds(d.context.entryIds ?? []);
+      const mergedMessages = mergePendingMessages(d.context.messages, stillPending);
+      setMessages(mergedMessages);
+      setEntryIds(mergedMessages === d.context.messages ? (d.context.entryIds ?? []) : mergedMessages.map((msg) => {
+        const idx = d.context.messages.indexOf(msg);
+        return idx === -1 ? "" : (d.context.entryIds ?? [])[idx] ?? "";
+      }));
       setCurrentModelOverride(null);
       setError(null);
       // If no live agent state, fall back to thinking level from session file
@@ -193,6 +232,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as { context: { messages: AgentMessage[]; entryIds: string[] } };
+      pendingUserMessagesRef.current = [];
       setMessages(d.context.messages);
       setEntryIds(d.context.entryIds ?? []);
     } catch (e) {
@@ -273,6 +313,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           break;
         }
         if (msg) {
+          autoFollowScrollRef.current = isNearBottom();
           dispatch({ type: "update", message: normalizeToolCalls(msg as AgentMessage) });
         }
         setAgentPhase(null);
@@ -281,7 +322,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       case "message_end": {
         const completed = event.message as AgentMessage | undefined;
         if (completed && completed.role !== "user") {
+          autoFollowScrollRef.current = isNearBottom();
           setMessages((prev) => [...prev, normalizeToolCalls(completed)]);
+        } else if (completed?.role === "user") {
+          const completedKey = messageContentKey(completed);
+          pendingUserMessagesRef.current = pendingUserMessagesRef.current.filter((msg) => messageContentKey(msg) !== completedKey);
+          setMessages((prev) => prev.some((msg) => messageContentKey(msg) === completedKey) ? prev : [...prev, completed]);
         }
         dispatch({ type: "reset" });
         setAgentPhase({ kind: "waiting_model" });
@@ -328,7 +374,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         }
         break;
     }
-  }, [loadSession, onAgentEnd]);
+  }, [isNearBottom, loadSession, onAgentEnd]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]) => {
@@ -344,10 +390,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       timestamp: Date.now(),
     };
     setMessages((prev) => [...prev, userMsg]);
+    setEntryIds((prev) => [...prev, ""]);
+    pendingUserMessagesRef.current = [...pendingUserMessagesRef.current, userMsg];
     setAgentRunning(true);
     setAgentPhase({ kind: "waiting_model" });
     dispatch({ type: "start" });
     pendingScrollToUserRef.current = true;
+    autoFollowScrollRef.current = false;
 
     const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
 
@@ -485,7 +534,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const handleSteer = useCallback(async (message: string, images?: AttachedImage[]) => {
     const sid = sessionIdRef.current;
     if (!sid) return;
-    setMessages((prev) => [...prev, { role: "user", content: `[steer] ${message}`, timestamp: Date.now() } as AgentMessage]);
+    const userMsg = { role: "user", content: `[steer] ${message}`, timestamp: Date.now() } as AgentMessage;
+    setMessages((prev) => [...prev, userMsg]);
+    setEntryIds((prev) => [...prev, ""]);
+    pendingUserMessagesRef.current = [...pendingUserMessagesRef.current, userMsg];
     const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
     try {
       await sendAgentCommand(sid, {
@@ -501,7 +553,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const handleFollowUp = useCallback(async (message: string, images?: AttachedImage[]) => {
     const sid = sessionIdRef.current;
     if (!sid) return;
-    setMessages((prev) => [...prev, { role: "user", content: message, timestamp: Date.now() } as AgentMessage]);
+    const userMsg = { role: "user", content: message, timestamp: Date.now() } as AgentMessage;
+    setMessages((prev) => [...prev, userMsg]);
+    setEntryIds((prev) => [...prev, ""]);
+    pendingUserMessagesRef.current = [...pendingUserMessagesRef.current, userMsg];
     const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
     try {
       await sendAgentCommand(sid, {
@@ -599,6 +654,22 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [data?.tree, activeLeafId, handleLeafChange, onBranchDataChange]);
 
   useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      autoFollowScrollRef.current = isNearBottom();
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [isNearBottom]);
+
+  useEffect(() => {
+    if (streamState.isStreaming && streamState.streamingMessage && autoFollowScrollRef.current) {
+      scrollToBottom("instant");
+    }
+  }, [streamState.streamingMessage, streamState.isStreaming, scrollToBottom]);
+
+  useEffect(() => {
     if (messages.length > 0) {
       if (pendingScrollToUserRef.current) {
         pendingScrollToUserRef.current = false;
@@ -607,11 +678,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       } else if (!initialScrollDoneRef.current) {
         initialScrollDoneRef.current = true;
         scrollToBottom("instant");
-      } else if (!agentRunningRef.current) {
-        scrollToBottom("smooth");
+      } else if (agentRunningRef.current && autoFollowScrollRef.current) {
+        scrollToBottom("instant");
       }
     }
-  }, [messages.length, agentRunning, scrollToBottom, scrollUserMsgToTop]);
+  }, [messages.length, scrollToBottom, scrollUserMsgToTop]);
 
   // Load model list
   useEffect(() => {
